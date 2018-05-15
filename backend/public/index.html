@@ -3,10 +3,10 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport"
-		  content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+	      content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
 	<meta http-equiv="X-UA-Compatible" content="ie=edge">
 
-	<title>VOTE ME ❤❤❤</title>
+	<title>Smart Public Transportation</title>
 
 	<link type="text/css" rel="stylesheet" href="css/bootstrap.min.css">
 	<link type="text/css" rel="stylesheet" href="css/vis.min.css">
@@ -18,104 +18,120 @@
 	<script src="/socket.io/socket.io.js"></script>
 
 	<script>
-		const maxAnzahlPersonen = 20;
+		const _maxAnzahlPersonen = 20;
 
-		let panicTimeout;
+		let _panicTimeout;
+		let _socket;
 
-		let persons = [];
-		let lightsInside = [];
-		let temperaturesInside = [];
+		let _persons;
+		let _personsDataset;
+		let _personsGraph;
 
-		$(function () {
-			$.get('/api/all', (data) => {
-				let socket = io();
+		let _temperature = 0;
 
-				const persons = data.persons;
-				const lightsInside = data.lightsInside;
-				const temperaturesInside = data.temeratureInside;
+		////////////////////////////////////////////////////////////////////
 
+		function refreshTemperature(temp) {
+			if (!isNaN(parseFloat(temp.value))) {
+				_temperature = temp.value;
+			}
+			$('#temperatur').text(_temperature);
+		}
 
-				//***********************************
-				// PERSONEN
-				//***********************************
-				const personsDataset = new vis.DataSet();
-				const personsGraph = new vis.Graph2d(document.getElementById('persons'), personsDataset, {
-					//start: persons[0].timestamp,
-					//end: persons[persons.length-1].timestamp,
-					moveable: false,
-					zoomable: false,
-					showCurrentTime: false,
-					interpolation: false,
-					dataAxis: {
-						left: {
-							range: {
-								min: 0,
-								max: 100
-							}
+		function panic() {
+			$('#panic').show();
+			clearTimeout(_panicTimeout);
+			_panicTimeout = setTimeout(() => {
+				$('#panic').hide();
+			}, 3000);
+		}
+
+		function addLog(payload) {
+			let newMsg = $('<span>').addClass('d-block').text(`${payload.from}: ${JSON.stringify(payload.message)}`);
+			$('#log').prepend(newMsg);
+		}
+
+		function updateGraph() {
+			if(_personsDataset.length === 0){
+				return;
+			}
+
+			_personsGraph.setWindow(
+				vis.moment(_personsDataset.min('x').x).subtract(5, 'minutes'),
+				vis.moment(_personsDataset.max('x').x).add(5, 'minutes')
+			);
+
+			$('#max').text(_maxAnzahlPersonen);
+			$('#currentlyUsed').text(_persons[_persons.length - 1].currPersons);
+		}
+
+		function addPerson(person, skipUpdating) {
+			_persons.push(person);
+			_personsDataset.add({
+				id: _persons.length - 1,
+				x: person.timestamp,
+				y: person.currPersons / _maxAnzahlPersonen * 100
+			});
+
+			if (_persons.length > 30) {
+				_personsDataset.remove(_personsDataset.min('x').id);
+			}
+
+			if (!skipUpdating) {
+				updateGraph();
+			}
+		}
+
+		////////////////////////////////////////////////////////////////////
+
+		$(function init() {
+			//***********************************
+			// GRAPH
+			//***********************************
+			_personsDataset = new vis.DataSet();
+			_personsGraph = new vis.Graph2d(document.getElementById('persons'), _personsDataset, {
+				//start: persons[0].timestamp,
+				//end: persons[persons.length-1].timestamp,
+				moveable: false,
+				zoomable: false,
+				showCurrentTime: false,
+				interpolation: false,
+				dataAxis: {
+					left: {
+						range: {
+							min: 0,
+							max: 100
 						}
 					}
-				});
+				}
+			});
 
-				for (let i = persons.length - 31; i < persons.length; i++) {
-					if (!persons[i]) {
+			//***********************************
+			// SOCKET
+			//***********************************
+			_socket = io();
+			_socket.on('temperature', refreshTemperature);
+			_socket.on('PANIC', panic);
+			_socket.on('log', addLog);
+			_socket.on('person', addPerson);
+
+			//***********************************
+			// TEMPERATUR
+			//***********************************
+			$.get('/api/temperature', refreshTemperature);
+
+			//***********************************
+			// PERSONEN
+			//***********************************
+			$.get('/api/persons', (data) => {
+				_persons = [];
+				for (let person of data) {
+					if (!person) {
 						continue;
 					}
-
-					personsDataset.add({
-						id: i,
-						x: persons[i].timestamp,
-						y: persons[i].currPersons / maxAnzahlPersonen * 100
-					});
-				}
-
-				function updateGraph() {
-					personsGraph.setWindow(vis.moment(personsDataset.min('x').x).subtract(5, 'minutes'), vis.moment(personsDataset.max('x').x).add(5, 'minutes'));
-					$('#max').text(maxAnzahlPersonen);
-					$('#currentlyUsed').text(persons[persons.length-1].currPersons);
+					addPerson(person, true);
 				}
 				updateGraph();
-
-				//***********************************
-				// TEMPERATUR
-				//***********************************
-				$('#temperatur').text(temperaturesInside[temperaturesInside.length-1].payload);
-
-				//***********************************
-				// SOCKET SHIZZL
-				//***********************************
-				socket.on('person', (person) => {
-					persons.push(person);
-					personsDataset.add({
-						id: persons.length-1,
-						x: person.timestamp,
-						y: person.currPersons / maxAnzahlPersonen * 100
-					});
-					if(persons.length > 30) {
-						personsDataset.remove(personsDataset.min('x').id);
-					}
-					updateGraph();
-				});
-
-				socket.on('temperatureInside', (temperatureInside) => {
-					temperaturesInside.push(temperatureInside);
-				});
-
-				socket.on('lightsInside', (lightInside) => {
-					lightsInside.push(lightInside);
-				});
-
-				socket.on('log', (payload) => {
-					let newMsg = $('<span>').addClass('d-block').text(`${payload.from}: ${payload.message}`);
-					$('#log').prepend(newMsg);
-				});
-
-				socket.on('PANIC', () => {
-					$('#panic').show();
-					clearTimeout(panicTimeout);
-					panicTimeout = setTimeout(() => {
-						$('#panic').hide();
-					}, 3000);
-				});
 			});
 		});
 	</script>
@@ -164,7 +180,9 @@
 <div class="container">
 	<div class="row">
 		<div class="col-8">
-			<h3 class="mb-3">Auslastung in % <small>(max: <span id="max">--</span> Personen)</small></h3>
+			<h3 class="mb-3">Auslastung in %
+				<small>(max: <span id="max">--</span> Personen)</small>
+			</h3>
 			<div id="persons"></div>
 		</div>
 		<div class="col-4">
@@ -181,12 +199,18 @@
 		</div>
 	</div>
 
-	<div class="row" style="margin-top:100px;">
+	<div class="row mt-5">
 		<div class="col-12">
 			<h3>Logs</h3>
 			<pre class="pre-scrollable">
 				<code id="log"></code>
 			</pre>
+		</div>
+	</div>
+
+	<div class="row mt-5 mb-5">
+		<div class="col-12">
+			<a href="bus.html" target="_blank">TUINO1 Simulator</a>
 		</div>
 	</div>
 </div>

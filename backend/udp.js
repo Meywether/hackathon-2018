@@ -24,8 +24,6 @@ server.on('message', (msg, info) => {
 		return console.error("Cannot parse message", data, err);
 	}
 
-	console.log(info.address, data);
-
 	const timestamp = Date.now();
 
 	for (let i in data) {

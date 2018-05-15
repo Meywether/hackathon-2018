@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="de">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport"
+	      content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+	<meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+	<title>TUINO Simulator</title>
+
+	<link type="text/css" rel="stylesheet" href="css/bootstrap.min.css">
+	<link type="text/css" rel="stylesheet" href="css/vis.min.css">
+	<link type="text/css" rel="stylesheet" href="iconic/font/css/open-iconic-bootstrap.min.css">
+
+	<script src="js/jquery-3.3.1.min.js"></script>
+	<script src="js/popper.min.js"></script>
+	<script src="js/bootstrap.min.js"></script>
+	<script src="js/vis.min.js"></script>
+	<script src="/socket.io/socket.io.js"></script>
+
+	<script>
+		let _socket;
+
+		////////////////////////////////////////////////////////////////////
+
+		function onPersonUpdate(data) {
+			const persons = data.currPersons;
+
+			$('#capacityInput').val(persons);
+
+			if(persons <= 0){
+				$('#removeButton').attr('disabled', true);
+			} else {
+				$('#removeButton').attr('disabled', false);
+			}
+
+			if(persons >= 20){
+				$('#addButton').attr('disabled', true);
+			} else {
+				$('#addButton').attr('disabled', false);
+			}
+		}
+
+		function onTemperatureUpdate(data) {
+			$('#temperatureInput').val(data.value);
+		}
+
+		function addPerson() {
+			doPerson(1);
+		}
+
+		function removePerson() {
+			doPerson(-1);
+		}
+
+		function doPerson(value) {
+			$.post('/api/persons', {
+				value
+			});
+		}
+
+		function setTemperature(e) {
+			e.preventDefault();
+
+			$.post('/api/temperature', {
+				value: $('#temperatureInput').val()
+			}, () => {
+				alert('Success');
+			});
+		}
+
+		function triggerPanic() {
+			$.post('/api/panic', {}, () => {
+				alert('Panic!');
+			});
+		}
+
+		////////////////////////////////////////////////////////////////////
+
+		$(function init() {
+			// Setup Socket
+			//***********************************
+			_socket = io();
+			_socket.on('person', onPersonUpdate);
+			_socket.on('temperature', onTemperatureUpdate);
+
+			// Enable tooltips
+			//***********************************
+			$('[data-toggle="tooltip"]').tooltip();
+
+			// Set Event-Handler
+			//***********************************
+			$('#addButton').click(addPerson);
+			$('#removeButton').click(removePerson);
+			$('#temperatureForm').submit(setTemperature);
+			$('#panicButton').click(triggerPanic);
+
+			// Get values
+			//***********************************
+			$.get('/api/persons', (data) => {
+				if (data.length === 0) {
+					return onPersonUpdate({currPersons: 0});
+				}
+				onPersonUpdate(data[data.length - 1]);
+			});
+			$.get('/api/temperature', onTemperatureUpdate);
+		});
+	</script>
+
+	<style>
+
+	</style>
+</head>
+<body>
+
+<div class="jumbotron">
+	<div class="container">
+		<h1 class="display-1">TUINO1 Simulator</h1>
+		<p class="lead">Have fun!</p>
+	</div>
+</div>
+
+<div class="container">
+	<div class="row">
+
+		<!-- CAPACITY -->
+		<div class="col-6">
+			<h3 class="mb-3">Auslastung</h3>
+
+			<div class="input-group input-group-lg">
+				<div class="input-group-prepend">
+					<button class="btn btn-success" data-toggle="tooltip" data-placement="bottom" title="Add 1"
+					        id="addButton">
+						<span class="oi oi-plus"></span>
+					</button>
+				</div>
+				<input type="number" disabled class="form-control text-center" id="capacityInput">
+				<div class="input-group-append">
+					<button class="btn btn-danger" data-toggle="tooltip" data-placement="bottom" title="Remove 1"
+					        id="removeButton">
+						<span class="oi oi-minus"></span>
+					</button>
+				</div>
+			</div>
+		</div>
+		<!-- / CAPACITY -->
+
+		<!-- TEMPERATURE -->
+		<div class="col-6">
+			<h3 class="mb-3">Temperatur</h3>
+
+			<form id="temperatureForm">
+				<div class="input-group input-group-lg">
+					<input type="number" class="form-control" id="temperatureInput" name="value" required>
+					<div class="input-group-append">
+						<button class="btn btn-info text-uppercase">
+							Set
+						</button>
+					</div>
+				</div>
+			</form>
+		</div>
+		<!-- / TEMPERATURE -->
+	</div>
+
+	<div class="row">
+		<div class="col-12">
+			<button class="btn btn-block btn-danger btn-lg text-uppercase mt-5" id="panicButton">
+				Panic
+			</button>
+		</div>
+	</div>
+</div>
+
+</body>
+</html>
